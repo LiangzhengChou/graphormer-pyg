@@ -3,6 +3,7 @@ import csv
 import json
 import pickle
 import random
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -10,6 +11,10 @@ import lmdb
 import numpy as np
 from pymatgen.core import Structure
 from torch_geometric.data import Data
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from graphormer.functional import precalculate_custom_attributes
 

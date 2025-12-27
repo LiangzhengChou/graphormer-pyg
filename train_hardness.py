@@ -1,5 +1,6 @@
 import argparse
 import csv
+import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -7,6 +8,10 @@ import torch
 from torch import nn
 from torch_geometric.loader import DataLoader
 from torch_geometric.nn.pool import global_mean_pool
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from graphormer.functional import precalculate_paths
 from graphormer.hardness_dataset import HardnessLmdbDataset, load_splits
