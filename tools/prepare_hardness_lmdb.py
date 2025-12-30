@@ -181,14 +181,23 @@ def _neighbors_from_structure(
     return edge_index, edge_attr
 
 
+def _safe_atomic_number(z_value: object) -> int:
+    if np.isscalar(z_value):
+        return int(z_value)
+    flattened = np.asarray(z_value).ravel()
+    if flattened.size == 0:
+        raise ValueError("Empty atomic number value encountered.")
+    return int(flattened[0])
+
+
 def _atomic_numbers_from_structure(structure: Structure) -> np.ndarray:
     atomic_numbers: List[int] = []
     for site in structure:
         if site.is_ordered:
-            atomic_numbers.append(int(site.specie.Z))
+            atomic_numbers.append(_safe_atomic_number(site.specie.Z))
         else:
             species, _ = max(site.species.items(), key=lambda item: item[1])
-            atomic_numbers.append(int(species.Z))
+            atomic_numbers.append(_safe_atomic_number(species.Z))
     return np.array(atomic_numbers, dtype=np.int64)
 
 
