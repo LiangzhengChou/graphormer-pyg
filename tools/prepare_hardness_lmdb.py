@@ -162,7 +162,7 @@ def _neighbors_from_structure(
     cutoff: float,
     max_neighbors: int,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    centers, neighbors, distances, _ = structure.get_neighbor_list(r=cutoff)
+    centers, neighbors, _offsets, distances = structure.get_neighbor_list(r=cutoff)
     per_atom: Dict[int, List[Tuple[int, float]]] = {}
     for center, neighbor, dist in zip(centers, neighbors, distances):
         per_atom.setdefault(_safe_int(center, "neighbor center"), []).append(
