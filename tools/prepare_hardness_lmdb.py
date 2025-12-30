@@ -18,6 +18,8 @@ from pymatgen.core import Structure
 from torch_geometric.data import Data
 from tqdm import tqdm
 
+from graphormer.functional import precalculate_custom_attributes
+
 LOGGER = logging.getLogger(__name__)
 
 
