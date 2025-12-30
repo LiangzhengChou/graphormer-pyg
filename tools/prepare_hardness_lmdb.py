@@ -182,10 +182,19 @@ def _neighbors_from_structure(
 
 
 def _safe_atomic_number(z_value: object) -> int:
-    flattened = np.asarray(z_value).ravel()
+    flattened = np.asarray(z_value, dtype=object).ravel()
     if flattened.size == 0:
         raise ValueError("Empty atomic number value encountered.")
-    value = flattened[0] if flattened.size > 1 else flattened.item()
+    value: object = flattened[0] if flattened.size > 1 else flattened.item()
+    depth_guard = 0
+    while isinstance(value, (list, tuple, np.ndarray)):
+        depth_guard += 1
+        if depth_guard > 10:
+            raise ValueError(f"Atomic number value is too deeply nested: {value!r}")
+        nested = np.asarray(value, dtype=object).ravel()
+        if nested.size == 0:
+            raise ValueError("Empty atomic number value encountered.")
+        value = nested[0] if nested.size > 1 else nested.item()
     try:
         return int(value)
     except (TypeError, ValueError) as exc:
