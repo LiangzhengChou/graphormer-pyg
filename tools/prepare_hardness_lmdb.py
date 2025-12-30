@@ -11,6 +11,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 import lmdb
 import numpy as np
 import pandas as pd
+import torch
 from pymatgen.core import Structure
 from torch_geometric.data import Data
 from tqdm import tqdm
@@ -180,6 +181,17 @@ def _neighbors_from_structure(
     return edge_index, edge_attr
 
 
+def _atomic_numbers_from_structure(structure: Structure) -> np.ndarray:
+    atomic_numbers: List[int] = []
+    for site in structure:
+        if site.is_ordered:
+            atomic_numbers.append(int(site.specie.Z))
+        else:
+            species, _ = max(site.species.items(), key=lambda item: item[1])
+            atomic_numbers.append(int(species.Z))
+    return np.array(atomic_numbers, dtype=np.int64)
+
+
 def build_graph(
     structure: Structure,
     sample_id: str,
@@ -190,16 +202,17 @@ def build_graph(
     max_in_degree: int,
     max_out_degree: int,
 ) -> Dict[str, object]:
-    atomic_numbers = np.array([site.specie.Z for site in structure], dtype=np.int64)
+    atomic_numbers = _atomic_numbers_from_structure(structure)
     pos = np.array(structure.cart_coords, dtype=np.float32)
     cell = np.array(structure.lattice.matrix, dtype=np.float32)
     pbc = np.array([True, True, True], dtype=np.bool_)
     edge_index, edge_attr = _neighbors_from_structure(
         structure, cutoff=cutoff, max_neighbors=max_neighbors
     )
+    edge_index_tensor = torch.as_tensor(edge_index, dtype=torch.long)
     graph = Data(
-        x=np.zeros((len(atomic_numbers), 1), dtype=np.float32),
-        edge_index=edge_index,
+        x=torch.zeros((len(atomic_numbers), 1), dtype=torch.float32),
+        edge_index=edge_index_tensor,
     )
     graph = precalculate_custom_attributes(
         graph,
@@ -225,79 +238,6 @@ def build_graph(
         },
     }
 
-    for _, row in tqdm(df.iterrows(), total=len(df), desc="Building graphs"):
-        sample_id = str(row["id"])
-        cif_path = str(row["cif_path"])
-        split_name = row["split"]
-        resolved_path = resolve_cif_path(cif_path, csv_dir, cif_root)
-        try:
-            structure = Structure.from_file(resolved_path)
-            graph = build_graph(
-                structure=structure,
-                sample_id=sample_id,
-                hardness=float(row["hardness"]),
-                cif_path=str(resolved_path),
-                get_edges=get_edges,
-                cutoff=cutoff,
-                max_neighbors=max_neighbors,
-            )
-            graphs_by_split[split_name].append(graph)
-        except Exception as exc:  # noqa: BLE001
-            LOGGER.warning("Failed to process %s: %s", resolved_path, exc)
-            errors.append(
-                {
-                    "id": sample_id,
-                    "cif_path": str(resolved_path),
-                    "error": str(exc),
-                }
-            )
-
-    id_maps: Dict[str, Dict[str, str]] = {}
-    for split_name, graphs in graphs_by_split.items():
-        env = lmdb.open(
-            str(lmdb_root / f"{split_name}.lmdb"),
-            map_size=map_size_mb * 1024 * 1024,
-            subdir=True,
-            lock=False,
-        )
-        id_map: Dict[str, str] = {}
-        records = ((str(idx), graph) for idx, graph in enumerate(graphs))
-        _write_lmdb_records(env, records, id_map)
-        env.sync()
-        env.close()
-        id_maps[split_name] = id_map
-        with (lmdb_root / f"{split_name}_id_map.json").open("w") as handle:
-            json.dump(id_map, handle, indent=2)
-
-    for split_name in ("train", "val", "test"):
-        split_df = df[df["split"] == split_name]
-        split_df.to_csv(out_root / f"{split_name}.csv", index=False)
-
-    if errors:
-        pd.DataFrame(errors).to_csv(out_root / "errors.csv", index=False)
-
-    stats = {
-        "total": {
-            "requested": int(len(df)),
-            "failed": int(len(errors)),
-            "successful": int(len(df) - len(errors)),
-        },
-        "splits": {
-            name: _compute_split_stats(graphs)
-            for name, graphs in graphs_by_split.items()
-        },
-    }
-    with (out_root / "stats.json").open("w") as handle:
-        json.dump(stats, handle, indent=2)
-
-    summary = {
-        "out_root": str(out_root),
-        "lmdb_root": str(lmdb_root),
-        "stats": stats,
-        "errors": errors,
-        "id_maps": id_maps,
-    }
-    return summary
 
 def _write_lmdb_records(
     env: lmdb.Environment,
